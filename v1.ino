@@ -12,7 +12,7 @@
 
 #include <SPI.h>
 #include "PCD8544_SPI.h"
-#include "TinyGPS++.h"
+#include <TinyGPS.h>
 #include "SoftwareSerial.h"
 #include "SdFat.h"
 #define PIN_DC        0x01  // D8
@@ -26,31 +26,99 @@
 #define SD_CHIP_SELECT_PIN  7
 
 PCD8544_SPI lcd;
-TinyGPSPlus gps;
-SoftwareSerial serial_connection(3, 3);
+TinyGPS gps;
+SoftwareSerial ss(3, 3);
 SdFatSoftSpi<SOFT_MISO_PIN, SOFT_MOSI_PIN, SOFT_SCK_PIN> sd;
+
+File flDataFile;                                      // Файл для записи GPS-строк.
 
 uint8_t satelite [] = {
 0x7E, 0x79, 0x14, 0x12, 0x09,
 };
 
+float flat, flon;
+unsigned long age;
+
+void writeToSD() {
+  int year;
+  byte month, day, hour, minute, second, hundredths;
+  
+  lcd.writeBitmap(satelite,0, 0, 5, 1);
+  
+  flDataFile = sd.open("track.gps", O_CREAT | O_WRITE | O_AT_END);
+  
+  gps.f_get_position(&flat, &flon, &age);
+  gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths);
+  char sz[32];
+  sprintf(sz, "%02d-%02d-%02d %02d:%02d:%02d",day, month, year, hour, minute, second);
+   
+  flDataFile.print(gps.satellites()); flDataFile.print(",");
+  flDataFile.print(gps.hdop()); flDataFile.print(",");
+  flDataFile.print(flat, 6); flDataFile.print(",");
+  flDataFile.print(flon, 6); flDataFile.print(",");
+  flDataFile.print(age); flDataFile.print(",");
+  flDataFile.print(sz); flDataFile.print(",");
+  flDataFile.print(gps.f_altitude()); flDataFile.print(",");
+  flDataFile.print(gps.f_course()); flDataFile.print(",");
+  flDataFile.print(gps.f_speed_kmph(), 2); flDataFile.print(",");
+  flDataFile.println();
+  flDataFile.close();
+  lcd.clear();
+}
+
+static void smartdelay(unsigned long ms)
+{
+  unsigned long start = millis();
+  do 
+  {
+    while (ss.available())
+      gps.encode(ss.read());
+  } while (millis() - start < ms);
+}
+
 void setup(void)
 {
-  serial_connection.begin(9600);
-
+  Serial.begin(115200);
+  ss.begin(9600);
   pinMode(PIN_LCD_LED, OUTPUT);
   analogWrite(PIN_LCD_LED, 240);
   
   lcd.begin();
 
   sd.begin(SD_CHIP_SELECT_PIN);
+  flDataFile = sd.open("track.gps", O_CREAT | O_WRITE | O_AT_END);
+  flDataFile.print(F("satellites, hdop, latitude, longitude, age, date, alt, course, speed"));
+  flDataFile.println();
+  flDataFile.close();
 }
 
 void loop(void) 
 {
-  while(serial_connection.available())
+    
+  smartdelay(1000);
+
+  writeToSD();
+  
+  delay(500);
+  /*gps.satellites();
+  print_int(gps.hdop(), TinyGPS::GPS_INVALID_HDOP, 5);
+  gps.f_get_position(&flat, &flon, &age);
+  print_float(flat, TinyGPS::GPS_INVALID_F_ANGLE, 10, 6);
+  print_float(flon, TinyGPS::GPS_INVALID_F_ANGLE, 11, 6);
+  print_int(age, TinyGPS::GPS_INVALID_AGE, 5);
+  print_date(gps);
+  print_float(gps.f_altitude(), TinyGPS::GPS_INVALID_F_ALTITUDE, 7, 2);
+  print_float(gps.f_course(), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
+  print_float(gps.f_speed_kmph(), TinyGPS::GPS_INVALID_F_SPEED, 6, 2);
+  print_str(gps.f_course() == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(gps.f_course()), 6);
+  print_int(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0xFFFFFFFF : (unsigned long)TinyGPS::distance_between(flat, flon, LONDON_LAT, LONDON_LON) / 1000, 0xFFFFFFFF, 9);
+  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
+  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
+*/
+
+ /* while(ss.available())
   {
-    gps.encode(serial_connection.read());
+    gps.encode(ss.read());
   }
   
   if(gps.location.isUpdated())
@@ -83,5 +151,8 @@ lcd.writeBitmap(satelite,0, 0, 5, 1);
     lcd.gotoXY(1,5);
     lcd.print("Lon: ");
     lcd.print(gps.location.lng(), 5);
-  }
+  }*/
 }
+
+
+
